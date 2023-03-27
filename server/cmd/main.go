@@ -6,13 +6,13 @@ import (
 	"strings"
 	"time"
 
-	pb "github.com/freeconf/gnmi/pb/gnmi"
 	"github.com/freeconf/gnmi/server"
 	"github.com/freeconf/restconf"
 	"github.com/freeconf/restconf/device"
 	"github.com/freeconf/yang/node"
 	"github.com/freeconf/yang/nodeutil"
 	"github.com/freeconf/yang/source"
+	pb_gnmi "github.com/openconfig/gnmi/proto/gnmi"
 	"google.golang.org/grpc"
 )
 
@@ -65,13 +65,13 @@ func main() {
 
 	gsrv := grpc.NewServer()
 	drv := &server.Driver{Device: d}
-	pb.RegisterGNMIServer(gsrv, drv)
+	pb_gnmi.RegisterGNMIServer(gsrv, drv)
 
 	lis, err := net.Listen("tcp", "127.0.0.1:8090")
 	if err != nil {
 		panic(err)
 	}
-	gsrv.Serve(lis)
+	// doesn't seem to be compat.
 	//srv.UnhandledRequestHandler = gsrv.ServeHTTP
 
 	// apply start-up config normally stored in a config file on disk
@@ -94,5 +94,7 @@ func main() {
 	}
 
 	// start your app
-	car.Start()
+	go car.Start()
+
+	gsrv.Serve(lis)
 }
