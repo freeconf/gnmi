@@ -1,19 +1,16 @@
 package main
 
 import (
-	"net"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/freeconf/gnmi/server"
+	"github.com/freeconf/gnmi"
 	"github.com/freeconf/restconf"
 	"github.com/freeconf/restconf/device"
 	"github.com/freeconf/yang/node"
 	"github.com/freeconf/yang/nodeutil"
 	"github.com/freeconf/yang/source"
-	pb_gnmi "github.com/openconfig/gnmi/proto/gnmi"
-	"google.golang.org/grpc"
 )
 
 // write your code to capture your domain however you want
@@ -63,28 +60,19 @@ func main() {
 	// Select wire-protocol RESTCONF to serve the device.
 	restconf.NewServer(d)
 
-	gsrv := grpc.NewServer()
-	drv := &server.Driver{Device: d}
-	pb_gnmi.RegisterGNMIServer(gsrv, drv)
-
-	lis, err := net.Listen("tcp", "127.0.0.1:8090")
-	if err != nil {
-		panic(err)
-	}
-	// doesn't seem to be compat.
-	//srv.UnhandledRequestHandler = gsrv.ServeHTTP
+	// Select wire-protocol gNMI to serve the device too
+	gnmi.NewServer(d)
 
 	// apply start-up config normally stored in a config file on disk
 	config := `{
 		"fc-restconf":{
 			"web":{
-				"port":":8080",
-				"_tls": {
-					"cert": {
-						"certFile": "server.crt",
-						"keyFile": "server.key"
-					}
-				}
+				"port":":8080"
+			}
+		},
+		"fc-gnmi":{
+			"web":{
+				"port":":8090"
 			}
 		},
         "car":{"speed":10}
@@ -94,7 +82,5 @@ func main() {
 	}
 
 	// start your app
-	go car.Start()
-
-	gsrv.Serve(lis)
+	car.Start()
 }

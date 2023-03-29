@@ -1,0 +1,183 @@
+package gnmi
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/freeconf/restconf/device"
+	"github.com/freeconf/yang/node"
+	"github.com/freeconf/yang/nodeutil"
+	pb_gnmi "github.com/openconfig/gnmi/proto/gnmi"
+)
+
+/*
+driver bridges between gnmi and FreeCONF. mapping GNMI commands to node operations
+*/
+type driver struct {
+	device *device.Local
+	pb_gnmi.UnimplementedGNMIServer
+}
+
+func (d *driver) Capabilities(ctx context.Context, req *pb_gnmi.CapabilityRequest) (*pb_gnmi.CapabilityResponse, error) {
+	resp := &pb_gnmi.CapabilityResponse{
+		SupportedModels: nil,
+		SupportedEncodings: []pb_gnmi.Encoding{
+			pb_gnmi.Encoding_JSON,
+			pb_gnmi.Encoding_JSON_IETF,
+		},
+		GNMIVersion: Version,
+	}
+	for moduleName, module := range d.device.Modules() {
+		md := &pb_gnmi.ModelData{
+			Name:         moduleName,
+			Organization: module.Organization(),
+			Version:      module.Revision().Ident(),
+		}
+		resp.SupportedModels = append(resp.SupportedModels, md)
+	}
+
+	return resp, nil
+}
+
+var errNoModule = errors.New("no module specified")
+
+func (d *driver) Get(ctx context.Context, req *pb_gnmi.GetRequest) (*pb_gnmi.GetResponse, error) {
+	now := time.Now().UnixNano()
+	resp := &pb_gnmi.Notification{
+		Timestamp: now,
+	}
+	for _, p := range req.Path {
+		sel, err := find(d.device, p)
+		if err != nil {
+			return nil, err
+		}
+		val, err := get(sel)
+		if err != nil {
+			return nil, err
+		}
+		resp.Update = append(resp.Update, &pb_gnmi.Update{
+			Path: p,
+			Val:  val,
+		})
+	}
+
+	return &pb_gnmi.GetResponse{
+		Notification: []*pb_gnmi.Notification{resp},
+	}, nil
+}
+
+func (d *driver) Set(ctx context.Context, req *pb_gnmi.SetRequest) (*pb_gnmi.SetResponse, error) {
+	var updates []*pb_gnmi.UpdateResult
+	for _, u := range req.Update {
+		sel, err := find(d.device, u.Path)
+		if err != nil {
+			return nil, err
+		}
+		err = set(sel, modePatch, u.Val)
+		if err != nil {
+			return nil, err
+		}
+		updates = append(updates, &pb_gnmi.UpdateResult{
+			Path: u.Path,
+		})
+	}
+	for _, del := range req.Delete {
+		sel, err := find(d.device, del)
+		if err != nil {
+			return nil, err
+		}
+		err = sel.Delete()
+		if err != nil {
+			return nil, err
+		}
+		updates = append(updates, &pb_gnmi.UpdateResult{
+			Path: del,
+		})
+	}
+	for _, u := range req.Replace {
+		sel, err := find(d.device, u.Path)
+		if err != nil {
+			return nil, err
+		}
+		err = set(sel, modeReplace, u.Val)
+		if err != nil {
+			return nil, err
+		}
+		updates = append(updates, &pb_gnmi.UpdateResult{
+			Path: u.Path,
+		})
+	}
+	return &pb_gnmi.SetResponse{
+		Response: updates,
+	}, nil
+}
+
+func get(sel node.Selection) (*pb_gnmi.TypedValue, error) {
+	msg, err := nodeutil.WriteJSON(sel)
+	if err != nil {
+		return nil, err
+	}
+	v := &pb_gnmi.TypedValue{
+		Value: &pb_gnmi.TypedValue_JsonVal{
+			JsonVal: []byte(msg),
+		},
+	}
+	return v, nil
+}
+
+const (
+	modePatch = iota
+	modeReplace
+)
+
+func set(sel node.Selection, mode int, v *pb_gnmi.TypedValue) error {
+	if v == nil {
+		return fmt.Errorf("empty value for %s", sel.Path)
+	}
+	var n node.Node
+	switch x := v.Value.(type) {
+	case *pb_gnmi.TypedValue_JsonIetfVal:
+		n = nodeutil.ReadJSON(string(x.JsonIetfVal))
+	case *pb_gnmi.TypedValue_JsonVal:
+		n = nodeutil.ReadJSON(string(x.JsonVal))
+	}
+	switch mode {
+	case modePatch:
+		if err := sel.UpsertFrom(n).LastErr; err != nil {
+			return err
+		}
+	case modeReplace:
+		if err := sel.ReplaceFrom(n); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func find(dev device.Device, p *pb_gnmi.Path) (node.Selection, error) {
+	var empty node.Selection
+	// target is device id
+	module := p.Origin
+	if module == "" {
+		return empty, errNoModule
+	}
+	b, err := dev.Browser(module)
+	if err != nil {
+		return empty, err
+	}
+
+	s := b.Root()
+	for _, elem := range p.Elem {
+		s = s.Find(elem.Name)
+		if s.IsNil() || s.LastErr != nil {
+			return empty, s.LastErr
+		}
+	}
+	return s, nil
+}
+
+func (d *driver) Subscribe(pb_gnmi.GNMI_SubscribeServer) error {
+	return nil
+}
