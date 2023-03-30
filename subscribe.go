@@ -104,6 +104,8 @@ func isEqualValues(a, b *pb_gnmi.TypedValue) bool {
 	switch a.Value.(type) {
 	case *pb_gnmi.TypedValue_JsonVal:
 		return bytes.Equal(a.GetJsonVal(), b.GetJsonVal())
+	case *pb_gnmi.TypedValue_JsonIetfVal:
+		return bytes.Equal(a.GetJsonIetfVal(), b.GetJsonIetfVal())
 	}
 	return false
 }
