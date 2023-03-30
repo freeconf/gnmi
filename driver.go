@@ -17,6 +17,7 @@ driver bridges between gnmi and FreeCONF. mapping GNMI commands to node operatio
 */
 type driver struct {
 	device *device.Local
+	subMgr subscriptionManager
 	pb_gnmi.UnimplementedGNMIServer
 }
 
@@ -70,19 +71,8 @@ func (d *driver) Get(ctx context.Context, req *pb_gnmi.GetRequest) (*pb_gnmi.Get
 
 func (d *driver) Set(ctx context.Context, req *pb_gnmi.SetRequest) (*pb_gnmi.SetResponse, error) {
 	var updates []*pb_gnmi.UpdateResult
-	for _, u := range req.Update {
-		sel, err := find(d.device, u.Path)
-		if err != nil {
-			return nil, err
-		}
-		err = set(sel, modePatch, u.Val)
-		if err != nil {
-			return nil, err
-		}
-		updates = append(updates, &pb_gnmi.UpdateResult{
-			Path: u.Path,
-		})
-	}
+
+	// order according to gNMI spec should be delete, replace then update
 	for _, del := range req.Delete {
 		sel, err := find(d.device, del)
 		if err != nil {
@@ -109,6 +99,20 @@ func (d *driver) Set(ctx context.Context, req *pb_gnmi.SetRequest) (*pb_gnmi.Set
 			Path: u.Path,
 		})
 	}
+	for _, u := range req.Update {
+		sel, err := find(d.device, u.Path)
+		if err != nil {
+			return nil, err
+		}
+		err = set(sel, modePatch, u.Val)
+		if err != nil {
+			return nil, err
+		}
+		updates = append(updates, &pb_gnmi.UpdateResult{
+			Path: u.Path,
+		})
+	}
+
 	return &pb_gnmi.SetResponse{
 		Response: updates,
 	}, nil
@@ -178,6 +182,31 @@ func find(dev device.Device, p *pb_gnmi.Path) (node.Selection, error) {
 	return s, nil
 }
 
-func (d *driver) Subscribe(pb_gnmi.GNMI_SubscribeServer) error {
+func (d *driver) Subscribe(server pb_gnmi.GNMI_SubscribeServer) error {
+	for {
+		req, err := server.Recv()
+		if err != nil && req != nil {
+			return err
+		}
+		if err = d.handleSubscribeList(server.Context(), req, server.Send); err != nil {
+			return err
+		}
+	}
+}
+
+// according to gNMI spec, this is for config or metrics only, not YANG notifications!
+func (d *driver) handleSubscribeList(ctx context.Context, req *pb_gnmi.SubscribeRequest, sink subscriptionSink) error {
+	list := req.GetSubscribe()
+	for _, subReq := range list.Subscription {
+		sub := newSubscription(d.device, subReq, sink)
+		// execute once sychronously avoids kicking off threads and runs thru
+		// sub to validate paths
+		if err := sub.execute(); err != nil {
+			return err
+		}
+		if list.Mode != pb_gnmi.SubscriptionList_ONCE {
+			d.subMgr.add(ctx, sub)
+		}
+	}
 	return nil
 }
