@@ -1,8 +1,10 @@
 package gnmi
 
 import (
+	"github.com/freeconf/yang/fc"
 	"github.com/freeconf/yang/node"
 	"github.com/freeconf/yang/nodeutil"
+	"github.com/freeconf/yang/val"
 )
 
 func Manage(s *Server) node.Node {
@@ -13,6 +15,17 @@ func Manage(s *Server) node.Node {
 				return options(s), nil
 			}
 			return nil, nil
+		},
+		OnField: func(r node.FieldRequest, hnd *node.ValueHandle) error {
+			switch r.Meta.Ident() {
+			case "debug":
+				if r.Write {
+					fc.DebugLog(hnd.Val.Value().(bool))
+				} else {
+					hnd.Val = val.Bool(fc.DebugLogEnabled())
+				}
+			}
+			return nil
 		},
 	}
 }

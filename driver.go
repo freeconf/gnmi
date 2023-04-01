@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/freeconf/restconf/device"
+	"github.com/freeconf/yang/fc"
 	"github.com/freeconf/yang/node"
 	"github.com/freeconf/yang/nodeutil"
 	pb_gnmi "github.com/openconfig/gnmi/proto/gnmi"
@@ -54,6 +55,7 @@ func (d *driver) Get(ctx context.Context, req *pb_gnmi.GetRequest) (*pb_gnmi.Get
 		if err != nil {
 			return nil, err
 		}
+		fc.Debug.Printf("get request %s", sel.Path)
 		val, err := get(sel)
 		if err != nil {
 			return nil, err
@@ -78,6 +80,7 @@ func (d *driver) Set(ctx context.Context, req *pb_gnmi.SetRequest) (*pb_gnmi.Set
 		if err != nil {
 			return nil, err
 		}
+		fc.Debug.Printf("del request %s", sel.Path)
 		err = sel.Delete()
 		if err != nil {
 			return nil, err
@@ -91,6 +94,7 @@ func (d *driver) Set(ctx context.Context, req *pb_gnmi.SetRequest) (*pb_gnmi.Set
 		if err != nil {
 			return nil, err
 		}
+		fc.Debug.Printf("replace request %s", sel.Path)
 		err = set(sel, modeReplace, u.Val)
 		if err != nil {
 			return nil, err
@@ -104,6 +108,7 @@ func (d *driver) Set(ctx context.Context, req *pb_gnmi.SetRequest) (*pb_gnmi.Set
 		if err != nil {
 			return nil, err
 		}
+		fc.Debug.Printf("update request %s", sel.Path)
 		err = set(sel, modePatch, u.Val)
 		if err != nil {
 			return nil, err
@@ -188,8 +193,10 @@ func (d *driver) Subscribe(server pb_gnmi.GNMI_SubscribeServer) error {
 		if err != nil && req != nil {
 			return err
 		}
-		if err = d.handleSubscribeList(server.Context(), req, server.Send); err != nil {
-			return err
+		if req != nil {
+			if err = d.handleSubscribeList(server.Context(), req, server.Send); err != nil {
+				return err
+			}
 		}
 	}
 }
@@ -198,14 +205,19 @@ func (d *driver) Subscribe(server pb_gnmi.GNMI_SubscribeServer) error {
 func (d *driver) handleSubscribeList(ctx context.Context, req *pb_gnmi.SubscribeRequest, sink subscriptionSink) error {
 	list := req.GetSubscribe()
 	for _, subReq := range list.Subscription {
+		fc.Debug.Printf("new sub mode = %d", list.Mode)
+
 		sub := newSubscription(d.device, subReq, sink)
+
 		// execute once sychronously avoids kicking off threads and runs thru
 		// sub to validate paths
 		if err := sub.execute(); err != nil {
 			return err
 		}
 		if list.Mode != pb_gnmi.SubscriptionList_ONCE {
-			d.subMgr.add(ctx, sub)
+			if err := d.subMgr.add(ctx, sub); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

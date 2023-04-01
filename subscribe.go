@@ -3,6 +3,7 @@ package gnmi
 import (
 	"bytes"
 	"context"
+	"errors"
 	"reflect"
 	"time"
 
@@ -14,45 +15,72 @@ import (
 type subscriptionSink func(*pb_gnmi.SubscribeResponse) error
 
 type subscriptionManager struct {
-	subs []*subscription
+	subs []reoccurringSubscription
 }
 
-func (mgr *subscriptionManager) add(ctx context.Context, sub *subscription) {
+type reoccurringSubscription interface {
+	execute() error
+	getSampleInterval() time.Duration
+}
+
+var errNoSampleInterval = errors.New("no sample interval given")
+
+func (mgr *subscriptionManager) add(ctx context.Context, sub reoccurringSubscription) error {
+	fc.Debug.Printf("starting ticker with sample rate %s", sub.getSampleInterval())
+	sample := sub.getSampleInterval()
+	if sample == 0 {
+		return errNoSampleInterval
+	}
 	mgr.subs = append(mgr.subs, sub)
-	t := time.NewTimer(time.Duration(sub.opts.SampleInterval) * time.Nanosecond)
+	t := time.NewTicker(sample)
 	go func() {
-		select {
-		case <-t.C:
-			if err := sub.execute(); err != nil {
-				// unclear how i should handle this
-				fc.Err.Printf("cannot get sub %s", err)
+		defer t.Stop()
+		for {
+			select {
+			case <-t.C:
+				fc.Debug.Printf("ticker fired")
+				if err := sub.execute(); err != nil {
+					// unclear how i should handle this
+					fc.Err.Printf("cannot get sub %s", err)
+				}
+			case <-ctx.Done():
+				return
 			}
-		case <-ctx.Done():
-			return
 		}
 	}()
+	return nil
 }
 
 type subscription struct {
-	device            *device.Local
-	sink              subscriptionSink
-	opts              *pb_gnmi.Subscription
-	heartbeatInterval time.Duration
-	previousValue     *pb_gnmi.TypedValue
-	previousTime      time.Time
+	device        *device.Local
+	sink          subscriptionSink
+	opts          *pb_gnmi.Subscription
+	previousValue *pb_gnmi.TypedValue
+	previousTime  time.Time
+}
+
+func (s *subscription) getHeartbeatInterval() time.Duration {
+	return time.Duration(s.opts.HeartbeatInterval) * time.Nanosecond
+}
+
+func (s *subscription) getSampleInterval() time.Duration {
+	if s.opts.SampleInterval == 0 {
+		return s.getHeartbeatInterval()
+	}
+	return time.Duration(s.opts.SampleInterval) * time.Nanosecond
 }
 
 func newSubscription(dev *device.Local, opts *pb_gnmi.Subscription, sink subscriptionSink) *subscription {
 	return &subscription{
-		device:            dev,
-		opts:              opts,
-		sink:              sink,
-		heartbeatInterval: time.Duration(opts.HeartbeatInterval) * time.Nanosecond,
+		device: dev,
+		opts:   opts,
+		sink:   sink,
 	}
 }
 
 func (s *subscription) execute() error {
 	sel, err := find(s.device, s.opts.Path)
+	fc.Debug.Printf("sub request %s", sel.Path)
 	if err != nil {
 		return err
 	}
@@ -63,7 +91,7 @@ func (s *subscription) execute() error {
 
 	now := time.Now()
 	if s.previousValue != nil {
-		if now.Sub(s.previousTime) < s.heartbeatInterval {
+		if now.Sub(s.previousTime) < s.getHeartbeatInterval() {
 			if s.opts.Mode == pb_gnmi.SubscriptionMode_ON_CHANGE {
 				if isEqualValues(s.previousValue, val) {
 					return nil
