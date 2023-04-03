@@ -50,8 +50,14 @@ func (d *driver) Get(ctx context.Context, req *pb_gnmi.GetRequest) (*pb_gnmi.Get
 	resp := &pb_gnmi.Notification{
 		Timestamp: now,
 	}
+
+	prefix, err := findPrefix(d.device, req.UseModels, req.Prefix)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, p := range req.Path {
-		sel, err := find(d.device, p)
+		sel, err := find(d.device, prefix, p)
 		if err != nil {
 			return nil, err
 		}
@@ -71,12 +77,59 @@ func (d *driver) Get(ctx context.Context, req *pb_gnmi.GetRequest) (*pb_gnmi.Get
 	}, nil
 }
 
+func findPrefix(device *device.Local, prefix *pb_gnmi.Path) (*node.Selection, error) {
+	// if len(models) == 0 {
+	// 	return nil, fmt.Errorf("must specify exactly 1 model")
+	// }
+	if prefix == nil || len(prefix.Elem) == 0 {
+		return nil, nil
+	}
+
+	s, err := find(device, nil, prefix)
+	if err != nil || s.IsNil() {
+		return nil, err
+	}
+	return nil, nil
+}
+
+func find(device *device.Local, prefix *node.Selection, path *pb_gnmi.Path) (node.Selection, error) {
+	var empty node.Selection
+	next := prefix
+
+	for _, p := range path.Elem {
+		if next == nil {
+			module := p.Name
+			b, err := device.Browser(module)
+			if err != nil || b == nil {
+				return empty, err
+			}
+			root := b.Root()
+			next = &root
+		} else {
+			s := (*next).Find(p.Name)
+			if s.IsNil() || s.LastErr != nil {
+				return empty, s.LastErr
+			}
+			next = &s
+		}
+	}
+	if next == nil {
+		return empty, nil
+	}
+	return (*next), nil
+}
+
 func (d *driver) Set(ctx context.Context, req *pb_gnmi.SetRequest) (*pb_gnmi.SetResponse, error) {
 	var updates []*pb_gnmi.UpdateResult
 
+	prefix, err := findPrefix(d.device, req.Prefix)
+	if err != nil {
+		return nil, err
+	}
+
 	// order according to gNMI spec should be delete, replace then update
 	for _, del := range req.Delete {
-		sel, err := find(d.device, del)
+		sel, err := find(d.device, prefix, del)
 		if err != nil {
 			return nil, err
 		}
@@ -90,7 +143,7 @@ func (d *driver) Set(ctx context.Context, req *pb_gnmi.SetRequest) (*pb_gnmi.Set
 		})
 	}
 	for _, u := range req.Replace {
-		sel, err := find(d.device, u.Path)
+		sel, err := find(d.device, prefix, u.Path)
 		if err != nil {
 			return nil, err
 		}
@@ -104,7 +157,7 @@ func (d *driver) Set(ctx context.Context, req *pb_gnmi.SetRequest) (*pb_gnmi.Set
 		})
 	}
 	for _, u := range req.Update {
-		sel, err := find(d.device, u.Path)
+		sel, err := find(d.device, prefix, u.Path)
 		if err != nil {
 			return nil, err
 		}
@@ -165,27 +218,27 @@ func set(sel node.Selection, mode int, v *pb_gnmi.TypedValue) error {
 	return nil
 }
 
-func find(dev device.Device, p *pb_gnmi.Path) (node.Selection, error) {
-	var empty node.Selection
-	// target is device id
-	module := p.Origin
-	if module == "" {
-		return empty, errNoModule
-	}
-	b, err := dev.Browser(module)
-	if err != nil {
-		return empty, err
-	}
+// func find(dev device.Device, prefix string, p *pb_gnmi.Path) (node.Selection, error) {
+// 	var empty node.Selection
+// 	// target is device id
+// 	module := p.Origin
+// 	if module == "" {
+// 		return empty, errNoModule
+// 	}
+// 	b, err := dev.Browser(module)
+// 	if err != nil {
+// 		return empty, err
+// 	}
 
-	s := b.Root()
-	for _, elem := range p.Elem {
-		s = s.Find(elem.Name)
-		if s.IsNil() || s.LastErr != nil {
-			return empty, s.LastErr
-		}
-	}
-	return s, nil
-}
+// 	s := b.Root()
+// 	for _, elem := range p.Elem {
+// 		s = s.Find(elem.Name)
+// 		if s.IsNil() || s.LastErr != nil {
+// 			return empty, s.LastErr
+// 		}
+// 	}
+// 	return s, nil
+// }
 
 func (d *driver) Subscribe(server pb_gnmi.GNMI_SubscribeServer) error {
 	for {
@@ -204,10 +257,16 @@ func (d *driver) Subscribe(server pb_gnmi.GNMI_SubscribeServer) error {
 // according to gNMI spec, this is for config or metrics only, not YANG notifications!
 func (d *driver) handleSubscribeList(ctx context.Context, req *pb_gnmi.SubscribeRequest, sink subscriptionSink) error {
 	list := req.GetSubscribe()
+
+	prefix, err := findPrefix(d.device, list.Prefix)
+	if err != nil {
+		return err
+	}
+
 	for _, subReq := range list.Subscription {
 		fc.Debug.Printf("new sub mode = %d", list.Mode)
 
-		sub := newSubscription(d.device, subReq, sink)
+		sub := newSubscription(d.device, prefix, subReq, sink)
 
 		// execute once sychronously avoids kicking off threads and runs thru
 		// sub to validate paths

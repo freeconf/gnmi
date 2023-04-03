@@ -9,6 +9,7 @@ import (
 
 	"github.com/freeconf/restconf/device"
 	"github.com/freeconf/yang/fc"
+	"github.com/freeconf/yang/node"
 	pb_gnmi "github.com/openconfig/gnmi/proto/gnmi"
 )
 
@@ -53,6 +54,7 @@ func (mgr *subscriptionManager) add(ctx context.Context, sub reoccurringSubscrip
 
 type subscription struct {
 	device        *device.Local
+	prefix        *node.Selection
 	sink          subscriptionSink
 	opts          *pb_gnmi.Subscription
 	previousValue *pb_gnmi.TypedValue
@@ -70,7 +72,7 @@ func (s *subscription) getSampleInterval() time.Duration {
 	return time.Duration(s.opts.SampleInterval) * time.Nanosecond
 }
 
-func newSubscription(dev *device.Local, opts *pb_gnmi.Subscription, sink subscriptionSink) *subscription {
+func newSubscription(dev *device.Local, prefix *node.Selection, opts *pb_gnmi.Subscription, sink subscriptionSink) *subscription {
 	return &subscription{
 		device: dev,
 		opts:   opts,
@@ -79,7 +81,7 @@ func newSubscription(dev *device.Local, opts *pb_gnmi.Subscription, sink subscri
 }
 
 func (s *subscription) execute() error {
-	sel, err := find(s.device, s.opts.Path)
+	sel, err := find(s.device, s.prefix, s.opts.Path)
 	fc.Debug.Printf("sub request %s", sel.Path)
 	if err != nil {
 		return err
