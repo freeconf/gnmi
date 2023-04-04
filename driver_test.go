@@ -32,9 +32,8 @@ func TestGet(t *testing.T) {
 	drv := &driver{device: dev}
 	ctx := context.TODO()
 	req := &pb_gnmi.GetRequest{
-		Path: []*pb_gnmi.Path{
-			{Elem: []*pb_gnmi.PathElem{{Name: "x"}}},
-		},
+		UseModels: []*pb_gnmi.ModelData{{Name: "x"}},
+		Path:      []*pb_gnmi.Path{nil},
 	}
 	resp, err := drv.Get(ctx, req)
 	fc.AssertEqual(t, nil, err)
@@ -61,10 +60,13 @@ func TestSet(t *testing.T) {
 	drv := &driver{device: dev}
 	ctx := context.TODO()
 	req := &pb_gnmi.SetRequest{
+		Prefix: &pb_gnmi.Path{
+			Origin: "x",
+		},
 		Update: []*pb_gnmi.Update{
 			{
 				Path: &pb_gnmi.Path{
-					Elem: []*pb_gnmi.PathElem{{Name: "x"}},
+					Elem: []*pb_gnmi.PathElem{nil},
 				},
 				Val: &pb_gnmi.TypedValue{
 					Value: &pb_gnmi.TypedValue_JsonVal{
@@ -124,7 +126,6 @@ type editTestOp struct {
 }
 
 func TestUpdate(t *testing.T) {
-	xPath := &pb_gnmi.PathElem{Name: "x"}
 	mePath := &pb_gnmi.PathElem{Name: "me"}
 	tests := []struct {
 		name    string
@@ -136,7 +137,6 @@ func TestUpdate(t *testing.T) {
 			name: "basic",
 			update: []editTestOp{
 				{
-					path: &pb_gnmi.Path{Elem: []*pb_gnmi.PathElem{xPath}},
 					data: `{"me":{"name":"bob"}}`,
 				},
 			},
@@ -144,14 +144,14 @@ func TestUpdate(t *testing.T) {
 		{
 			name: "del",
 			del: []*pb_gnmi.Path{
-				{Elem: []*pb_gnmi.PathElem{xPath, mePath}},
+				{Elem: []*pb_gnmi.PathElem{mePath}},
 			},
 		},
 		{
 			name: "replace",
 			replace: []editTestOp{
 				{
-					path: &pb_gnmi.Path{Elem: []*pb_gnmi.PathElem{xPath, mePath}},
+					path: &pb_gnmi.Path{Elem: []*pb_gnmi.PathElem{mePath}},
 					data: `{"me":{"name":"barb", "skill":"welder"}}`,
 				},
 			},
@@ -173,7 +173,9 @@ func TestUpdate(t *testing.T) {
 		dev := newTestDevice(data)
 		drv := &driver{device: dev}
 		ctx := context.TODO()
-		req := &pb_gnmi.SetRequest{}
+		req := &pb_gnmi.SetRequest{
+			Prefix: &pb_gnmi.Path{Origin: "x"},
+		}
 		for _, u := range test.update {
 			req.Update = append(req.Update, &pb_gnmi.Update{
 				Path: u.path,

@@ -72,16 +72,17 @@ func (s *subscription) getSampleInterval() time.Duration {
 	return time.Duration(s.opts.SampleInterval) * time.Nanosecond
 }
 
-func newSubscription(dev *device.Local, prefix *node.Selection, opts *pb_gnmi.Subscription, sink subscriptionSink) *subscription {
+func newSubscription(d *device.Local, prefix *node.Selection, opts *pb_gnmi.Subscription, sink subscriptionSink) *subscription {
 	return &subscription{
-		device: dev,
+		device: d,
+		prefix: prefix,
 		opts:   opts,
 		sink:   sink,
 	}
 }
 
 func (s *subscription) execute() error {
-	sel, err := find(s.device, s.prefix, s.opts.Path)
+	sel, err := advanceSelection(s.device, s.prefix, s.opts.Path)
 	fc.Debug.Printf("sub request %s", sel.Path)
 	if err != nil {
 		return err

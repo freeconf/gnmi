@@ -22,13 +22,14 @@ func TestSub(t *testing.T) {
 		},
 	}
 	dev := newTestDevice(data)
+	b, _ := dev.Browser("x")
+	root := b.Root()
+	prefix := &root
 
 	t.Run("onetime", func(t *testing.T) {
 		opts := &pb_gnmi.Subscription{
-			Path: &pb_gnmi.Path{
-				Elem: []*pb_gnmi.PathElem{{Name: "x"}},
-			},
 			Mode: pb_gnmi.SubscriptionMode_SAMPLE,
+			Path: &pb_gnmi.Path{},
 		}
 		var actual []byte
 		sink := func(resp *pb_gnmi.SubscribeResponse) error {
@@ -36,7 +37,7 @@ func TestSub(t *testing.T) {
 			actual = update.Update.Update[0].Val.GetJsonVal()
 			return nil
 		}
-		sub := newSubscription(dev, nil, opts, sink)
+		sub := newSubscription(dev, prefix, opts, sink)
 		err := sub.execute()
 		fc.AssertEqual(t, nil, err)
 		// NOTE: same gold file as TestGet as they should match
@@ -45,9 +46,6 @@ func TestSub(t *testing.T) {
 
 	t.Run("onchange", func(t *testing.T) {
 		opts := &pb_gnmi.Subscription{
-			Path: &pb_gnmi.Path{
-				Elem: []*pb_gnmi.PathElem{{Name: "x"}},
-			},
 			Mode:              pb_gnmi.SubscriptionMode_ON_CHANGE,
 			SampleInterval:    10 * uint64(time.Millisecond),
 			HeartbeatInterval: 40 * uint64(time.Millisecond),
@@ -57,7 +55,7 @@ func TestSub(t *testing.T) {
 			at = time.Now()
 			return nil
 		}
-		sub := newSubscription(dev, nil, opts, sink)
+		sub := newSubscription(dev, prefix, opts, sink)
 		err := sub.execute()
 		fc.AssertEqual(t, nil, err)
 		fc.AssertEqual(t, false, at.IsZero())
