@@ -3,8 +3,8 @@ module github.com/freeconf/gnmi
 go 1.20
 
 require (
-	github.com/freeconf/restconf v0.0.0-20230325123108-f8e243b22ea0 // indirect
-	github.com/freeconf/yang v0.0.0-20230324235123-ccfffc97f531 // indirect
+	github.com/freeconf/restconf v0.0.0-20230405122357-35c2d910ad38 // indirect
+	github.com/freeconf/yang v0.0.0-20230405122240-93e4375862dd // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/openconfig/gnmi v0.9.1 // indirect
 	golang.org/x/net v0.8.0 // indirect

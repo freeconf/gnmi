@@ -20,7 +20,7 @@ var errNoSelection = errors.New("no prefix or path found")
 
 var errKeysWhenNoList = errors.New("found keys when model is not a list")
 
-func selectPath(device *device.Local, models []*pb_gnmi.ModelData, path *pb_gnmi.Path) (*node.Selection, error) {
+func selectPath(device device.Device, models []*pb_gnmi.ModelData, path *pb_gnmi.Path) (*node.Selection, error) {
 	var model string
 	if len(models) > 0 {
 		if len(models) > 1 {
@@ -53,7 +53,7 @@ func selectPath(device *device.Local, models []*pb_gnmi.ModelData, path *pb_gnmi
 	return ptr, nil
 }
 
-func advanceSelection(device *device.Local, prefix *node.Selection, path *pb_gnmi.Path) (node.Selection, error) {
+func advanceSelection(device device.Device, prefix *node.Selection, path *pb_gnmi.Path) (node.Selection, error) {
 	var empty node.Selection
 	ptr := prefix
 	if prefix == nil {
@@ -100,7 +100,7 @@ func advanceSelection(device *device.Local, prefix *node.Selection, path *pb_gnm
 
 // Posted on 4/3/23 asking question on openconfig google group about how
 // set is only method that doesn't have a use_model
-func selectFullPath(device *device.Local, prefix *pb_gnmi.Path, path *pb_gnmi.Path) (node.Selection, error) {
+func selectFullPath(device device.Device, prefix *pb_gnmi.Path, path *pb_gnmi.Path) (node.Selection, error) {
 	var empty node.Selection
 	var ptr *node.Selection
 	var err error

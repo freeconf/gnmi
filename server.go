@@ -48,7 +48,7 @@ func (s *Server) Apply(opts ServerOpts) error {
 		s.listener = nil
 	}
 	s.grpcServer = grpc.NewServer()
-	s.driver = &driver{device: s.device}
+	s.driver = newDriver(s.device)
 	pb_gnmi.RegisterGNMIServer(s.grpcServer, s.driver)
 	s.listener, err = net.Listen("tcp", opts.Port)
 	if err != nil {

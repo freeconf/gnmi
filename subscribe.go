@@ -26,6 +26,52 @@ type reoccurringSubscription interface {
 
 var errNoSampleInterval = errors.New("no sample interval given")
 
+type subService struct {
+	subMgr subscriptionManager
+}
+
+func (s *subService) subscribe(d device.Device, server pb_gnmi.GNMI_SubscribeServer) error {
+	for {
+		req, err := server.Recv()
+		if err != nil && req != nil {
+			return err
+		}
+		if req != nil {
+			if err = s.handleSubscribeList(d, server.Context(), req, server.Send); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// according to gNMI spec, this is for config or metrics only, not YANG notifications!
+func (s *subService) handleSubscribeList(d device.Device, ctx context.Context, req *pb_gnmi.SubscribeRequest, sink subscriptionSink) error {
+	list := req.GetSubscribe()
+
+	prefix, err := selectPath(d, list.UseModels, list.Prefix)
+	if err != nil {
+		return err
+	}
+
+	for _, subReq := range list.Subscription {
+		fc.Debug.Printf("new sub mode = %d", list.Mode)
+
+		sub := newSubscription(d, prefix, subReq, sink)
+
+		// execute once sychronously avoids kicking off threads and runs thru
+		// sub to validate paths
+		if err := sub.execute(); err != nil {
+			return err
+		}
+		if list.Mode != pb_gnmi.SubscriptionList_ONCE {
+			if err := s.subMgr.add(ctx, sub); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (mgr *subscriptionManager) add(ctx context.Context, sub reoccurringSubscription) error {
 	fc.Debug.Printf("starting ticker with sample rate %s", sub.getSampleInterval())
 	sample := sub.getSampleInterval()
@@ -53,7 +99,7 @@ func (mgr *subscriptionManager) add(ctx context.Context, sub reoccurringSubscrip
 }
 
 type subscription struct {
-	device        *device.Local
+	device        device.Device
 	prefix        *node.Selection
 	sink          subscriptionSink
 	opts          *pb_gnmi.Subscription
@@ -72,7 +118,7 @@ func (s *subscription) getSampleInterval() time.Duration {
 	return time.Duration(s.opts.SampleInterval) * time.Nanosecond
 }
 
-func newSubscription(d *device.Local, prefix *node.Selection, opts *pb_gnmi.Subscription, sink subscriptionSink) *subscription {
+func newSubscription(d device.Device, prefix *node.Selection, opts *pb_gnmi.Subscription, sink subscriptionSink) *subscription {
 	return &subscription{
 		device: d,
 		prefix: prefix,
@@ -87,7 +133,7 @@ func (s *subscription) execute() error {
 	if err != nil {
 		return err
 	}
-	val, err := get(sel)
+	val, err := getVal(sel)
 	if err != nil {
 		return err
 	}
