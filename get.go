@@ -29,14 +29,16 @@ func get(d device.Device, ctx context.Context, req *pb_gnmi.GetRequest) (*pb_gnm
 			return nil, err
 		}
 		fc.Debug.Printf("get request %s", sel.Path)
-		val, err := getVal(sel)
-		if err != nil {
-			return nil, err
+		if !sel.IsNil() {
+			val, err := getVal(sel)
+			if err != nil {
+				return nil, err
+			}
+			resp.Update = append(resp.Update, &pb_gnmi.Update{
+				Path: p,
+				Val:  val,
+			})
 		}
-		resp.Update = append(resp.Update, &pb_gnmi.Update{
-			Path: p,
-			Val:  val,
-		})
 	}
 
 	return &pb_gnmi.GetResponse{

@@ -55,6 +55,9 @@ func selectPath(device device.Device, models []*pb_gnmi.ModelData, path *pb_gnmi
 
 func advanceSelection(device device.Device, prefix *node.Selection, path *pb_gnmi.Path) (node.Selection, error) {
 	var empty node.Selection
+	if prefix == nil && path == nil {
+		return empty, errNoSelection
+	}
 	ptr := prefix
 	if prefix == nil {
 		if path == nil {

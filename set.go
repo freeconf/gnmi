@@ -38,6 +38,9 @@ func set(d device.Device, ctx context.Context, req *pb_gnmi.SetRequest) (*pb_gnm
 			return nil, err
 		}
 		fc.Debug.Printf("replace request %s", sel.Path)
+		if sel.IsNil() {
+			return nil, fmt.Errorf("no selection found at %s", u.String())
+		}
 		err = setVal(sel, modeReplace, u.Val)
 		if err != nil {
 			return nil, err
@@ -56,6 +59,9 @@ func set(d device.Device, ctx context.Context, req *pb_gnmi.SetRequest) (*pb_gnm
 		err = setVal(sel, modePatch, u.Val)
 		if err != nil {
 			return nil, err
+		}
+		if sel.IsNil() {
+			return nil, fmt.Errorf("no selection found at %s", u.String())
 		}
 		updates = append(updates, &pb_gnmi.UpdateResult{
 			Op:   pb_gnmi.UpdateResult_UPDATE,
