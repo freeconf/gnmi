@@ -38,7 +38,7 @@ func set(d device.Device, ctx context.Context, req *pb_gnmi.SetRequest) (*pb_gnm
 			return nil, err
 		}
 		fc.Debug.Printf("replace request %s", sel.Path)
-		if sel.IsNil() {
+		if sel == nil {
 			return nil, fmt.Errorf("no selection found at %s", u.String())
 		}
 		err = setVal(sel, modeReplace, u.Val)
@@ -60,7 +60,7 @@ func set(d device.Device, ctx context.Context, req *pb_gnmi.SetRequest) (*pb_gnm
 		if err != nil {
 			return nil, err
 		}
-		if sel.IsNil() {
+		if sel == nil {
 			return nil, fmt.Errorf("no selection found at %s", u.String())
 		}
 		updates = append(updates, &pb_gnmi.UpdateResult{
@@ -82,7 +82,7 @@ const (
 
 var errTypeNotSupported = errors.New("gnmi encoding type not supported")
 
-func setVal(sel node.Selection, mode int, v *pb_gnmi.TypedValue) error {
+func setVal(sel *node.Selection, mode int, v *pb_gnmi.TypedValue) error {
 	if v == nil {
 		return fmt.Errorf("empty value for %s", sel.Path)
 	}
@@ -111,7 +111,7 @@ func setVal(sel node.Selection, mode int, v *pb_gnmi.TypedValue) error {
 	n := nodeutil.ReadJSON(data)
 	switch mode {
 	case modePatch:
-		if err := sel.UpsertFrom(n).LastErr; err != nil {
+		if err := sel.UpsertFrom(n); err != nil {
 			return err
 		}
 	case modeReplace:

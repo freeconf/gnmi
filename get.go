@@ -29,7 +29,7 @@ func get(d device.Device, ctx context.Context, req *pb_gnmi.GetRequest) (*pb_gnm
 			return nil, err
 		}
 		fc.Debug.Printf("get request %s", sel.Path)
-		if !sel.IsNil() {
+		if sel != nil {
 			val, err := getVal(sel)
 			if err != nil {
 				return nil, err
@@ -46,7 +46,7 @@ func get(d device.Device, ctx context.Context, req *pb_gnmi.GetRequest) (*pb_gnm
 	}, nil
 }
 
-func getVal(sel node.Selection) (*pb_gnmi.TypedValue, error) {
+func getVal(sel *node.Selection) (*pb_gnmi.TypedValue, error) {
 	var v *pb_gnmi.TypedValue
 	if meta.IsLeaf(sel.Path.Meta) {
 		val, err := sel.Get()

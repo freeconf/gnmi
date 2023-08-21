@@ -42,39 +42,38 @@ func selectPath(device device.Device, models []*pb_gnmi.ModelData, path *pb_gnmi
 		return nil, fmt.Errorf("no module with name '%s' found", models[0].Name)
 	}
 	s := b.Root()
-	ptr := &s
+	ptr := s
 	if path != nil && len(path.Elem) > 0 {
 		s, err = advanceSelection(device, ptr, path)
 		if err != nil {
 			return nil, err
 		}
-		ptr = &s
+		ptr = s
 	}
 	return ptr, nil
 }
 
-func advanceSelection(device device.Device, prefix *node.Selection, path *pb_gnmi.Path) (node.Selection, error) {
-	var empty node.Selection
+func advanceSelection(device device.Device, prefix *node.Selection, path *pb_gnmi.Path) (*node.Selection, error) {
 	if prefix == nil && path == nil {
-		return empty, errNoSelection
+		return nil, errNoSelection
 	}
 	ptr := prefix
 	if prefix == nil {
 		if path == nil {
-			return empty, errNoSelection
+			return nil, errNoSelection
 		}
 		if path.Origin == "" {
-			return empty, errModelOrOrigin
+			return nil, errModelOrOrigin
 		}
 		var err error
 		if ptr, err = selectPath(device, nil, path); err != nil {
-			return empty, err
+			return nil, err
 		}
-		return *ptr, nil
+		return ptr, nil
 	}
 
 	if ptr == nil {
-		return empty, errNoSelection
+		return nil, errNoSelection
 	}
 
 	if path != nil {
@@ -86,49 +85,48 @@ func advanceSelection(device device.Device, prefix *node.Selection, path *pb_gnm
 			if len(seg.Key) > 0 {
 				lmeta, valid := ptr.Meta().(*meta.List)
 				if !valid {
-					return empty, errKeysWhenNoList
+					return nil, errKeysWhenNoList
 				}
 				ident = ident + "=" + encodeKey(lmeta, seg.Key)
 			}
-			s := (*ptr).Find(ident) // should find take keys to avoid encode/decoding step?
-			if s.IsNil() || s.LastErr != nil {
-				return empty, s.LastErr
+			s, err := ptr.Find(ident) // should find take keys to avoid encode/decoding step?
+			if err != nil || s == nil {
+				return nil, err
 			}
-			ptr = &s
+			ptr = s
 		}
 	}
 
-	return *ptr, nil
+	return ptr, nil
 }
 
 // Posted on 4/3/23 asking question on openconfig google group about how
 // set is only method that doesn't have a use_model
-func selectFullPath(device device.Device, prefix *pb_gnmi.Path, path *pb_gnmi.Path) (node.Selection, error) {
-	var empty node.Selection
+func selectFullPath(device device.Device, prefix *pb_gnmi.Path, path *pb_gnmi.Path) (*node.Selection, error) {
 	var ptr *node.Selection
 	var err error
 	if prefix != nil {
 		if ptr, err = selectPath(device, nil, prefix); err != nil {
-			return empty, err
+			return nil, err
 		}
 	}
 	if path != nil {
 		if ptr == nil {
 			if ptr, err = selectPath(device, nil, path); err != nil {
-				return empty, err
+				return nil, err
 			}
 		} else {
 			s, err := advanceSelection(device, ptr, path)
 			if err != nil {
-				return empty, err
+				return nil, err
 			}
-			ptr = &s
+			ptr = s
 		}
 	}
 	if ptr == nil {
-		return empty, errNoSelection
+		return nil, errNoSelection
 	}
-	return *ptr, nil
+	return ptr, nil
 }
 
 func encodeKey(m *meta.List, keys map[string]string) string {

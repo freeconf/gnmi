@@ -24,7 +24,7 @@ func TestSub(t *testing.T) {
 	dev := newTestDevice(data)
 	b, _ := dev.Browser("x")
 	root := b.Root()
-	prefix := &root
+	prefix := root
 
 	t.Run("onetime", func(t *testing.T) {
 		opts := &pb_gnmi.Subscription{
