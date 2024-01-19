@@ -3,8 +3,8 @@ module github.com/freeconf/gnmi
 go 1.20
 
 require (
-	github.com/freeconf/restconf v0.0.0-20230821105745-0b57571700da
-	github.com/freeconf/yang v0.0.0-20230821105535-d155c2806a88
+	github.com/freeconf/restconf v0.0.0-20240119114518-84ef51546f7f
+	github.com/freeconf/yang v0.0.0-20240119112917-991b7759d792
 	github.com/openconfig/gnmi v0.9.1
 	google.golang.org/grpc v1.54.0
 )

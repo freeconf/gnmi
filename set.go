@@ -108,7 +108,10 @@ func setVal(sel *node.Selection, mode int, v *pb_gnmi.TypedValue) error {
 	default:
 		return errTypeNotSupported
 	}
-	n := nodeutil.ReadJSON(data)
+	n, err := nodeutil.ReadJSON(data)
+	if err != nil {
+		return err
+	}
 	switch mode {
 	case modePatch:
 		if err := sel.UpsertFrom(n); err != nil {
